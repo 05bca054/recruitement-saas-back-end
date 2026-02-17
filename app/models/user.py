@@ -93,6 +93,13 @@ class OrganizationModel(BaseModel):
         "created_at": None
     }
     
+    # Telegram configuration
+    telegram_config: Optional[dict] = {
+        "bot_token": None,
+        "bot_username": None,
+        "is_active": False
+    }
+
     # AI Usage Stats
     total_input_tokens: int = 0
     total_output_tokens: int = 0

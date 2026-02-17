@@ -120,7 +120,7 @@ async def list_candidates(
     current_user: UserModel = Depends(get_current_active_user),
     db: AsyncIOMotorDatabase = Depends(get_db)
 ):
-    """List all candidates for the organization."""
+    """List all candidates for the organization with their latest interview scores."""
     
     query = {"organization_id": current_user.organization_id}
     if pipeline_id:
@@ -128,25 +128,52 @@ async def list_candidates(
     
     candidates = await db.candidates.find(query).to_list(length=100)
     
-    return [
-        CandidateResponse(
-            id=str(c["_id"]),
-            organization_id=str(c["organization_id"]),
-            pipeline_id=str(c["pipeline_id"]),
-            current_stage_id=c.get("current_stage_id"),
-            first_name=c["first_name"],
-            last_name=c["last_name"],
-            email=c["email"],
-            phone=c.get("phone"),
-            resume_url=c.get("resume_url"),
-            status=c.get("status", "active"),
-            overall_score=c.get("overall_score", 0.0),
-            airtable_record_id=c.get("airtable_record_id"),
-            created_at=c["created_at"],
-            updated_at=c["updated_at"]
+    # Fetch latest session for each candidate to get scores and AI costs
+    result = []
+    for c in candidates:
+        # Get the latest completed session for this candidate
+        session = await db.interview_sessions.find_one(
+            {"candidate_id": c["_id"]},
+            sort=[("created_at", -1)]
         )
-        for c in candidates
-    ]
+        
+        # Extract score and AI cost from session
+        overall_score = 0.0
+        total_input_tokens = 0
+        total_output_tokens = 0
+        total_ai_cost = 0.0
+        
+        if session:
+            overall_score = session.get("total_score", 0.0)
+        
+        # Get AI costs from candidate document (they're incrementally updated there)
+        total_input_tokens = c.get("total_input_tokens", 0)
+        total_output_tokens = c.get("total_output_tokens", 0)
+        total_ai_cost = c.get("total_ai_cost", 0.0)
+        
+        result.append(
+            CandidateResponse(
+                id=str(c["_id"]),
+                organization_id=str(c["organization_id"]),
+                pipeline_id=str(c["pipeline_id"]),
+                current_stage_id=c.get("current_stage_id"),
+                first_name=c["first_name"],
+                last_name=c["last_name"],
+                email=c["email"],
+                phone=c.get("phone"),
+                resume_url=c.get("resume_url"),
+                status=c.get("status", "active"),
+                overall_score=overall_score,
+                total_input_tokens=total_input_tokens,
+                total_output_tokens=total_output_tokens,
+                total_ai_cost=total_ai_cost,
+                airtable_record_id=c.get("airtable_record_id"),
+                created_at=c["created_at"],
+                updated_at=c["updated_at"]
+            )
+        )
+    
+    return result
 
 
 @router.get("/{candidate_id}", response_model=CandidateResponse)

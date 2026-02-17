@@ -12,7 +12,8 @@ from app.schemas.auth import (
     TokenResponse,
     RefreshTokenRequest,
     UserResponse,
-    OrganizationResponse
+    OrganizationResponse,
+    TelegramConfigUpdate
 )
 from app.models.user import UserModel, OrganizationModel, RefreshTokenModel
 from app.utils.security import (
@@ -279,3 +280,25 @@ async def get_current_organization(
         total_output_tokens=org.get("total_output_tokens", 0),
         total_ai_cost=org.get("total_ai_cost", 0.0)
     )
+
+@router.patch("/organization/telegram")
+async def update_telegram_config(
+    config: TelegramConfigUpdate,
+    current_user: UserModel = Depends(get_current_active_user),
+    db: AsyncIOMotorDatabase = Depends(get_db)
+):
+    """Update Telegram configuration."""
+    # Verify user is admin (optional, for now assumed if they can login)
+    
+    update_data = {
+        "telegram_config.bot_token": config.bot_token,
+        "telegram_config.bot_username": config.bot_username,
+        "telegram_config.is_active": True
+    }
+    
+    await db.organizations.update_one(
+        {"_id": current_user.organization_id},
+        {"$set": update_data}
+    )
+    
+    return {"message": "Telegram configuration updated. Please restart the server for changes to take effect."}

@@ -6,15 +6,26 @@ from contextlib import asynccontextmanager
 from app.config import settings
 from app.database import Database
 from app.routers import auth, airtable, pipelines, candidates, questions, interviews
+from app.services.telegram_service import TelegramService
 
+telegram_bot = TelegramService()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan events."""
     # Startup
     await Database.connect()
+    
+    # Initialize and Start Telegram Bot
+    try:
+        await telegram_bot.initialize()
+        await telegram_bot.start_polling()
+    except Exception as e:
+        print(f"Failed to start Telegram Bot: {e}")
+
     yield
     # Shutdown
+    await telegram_bot.stop()
     await Database.disconnect()
 
 

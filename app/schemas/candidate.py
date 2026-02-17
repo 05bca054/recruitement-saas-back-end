@@ -27,6 +27,9 @@ class CandidateResponse(BaseModel):
     resume_url: Optional[str]
     status: str
     overall_score: float
+    total_input_tokens: int = 0
+    total_output_tokens: int = 0
+    total_ai_cost: float = 0.0
     airtable_record_id: Optional[str]
     created_at: datetime
     updated_at: datetime

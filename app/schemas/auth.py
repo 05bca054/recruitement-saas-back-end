@@ -67,3 +67,8 @@ class OrganizationResponse(BaseModel):
     
     class Config:
         from_attributes = True
+
+class TelegramConfigUpdate(BaseModel):
+    """Telegram configuration update schema."""
+    bot_token: str
+    bot_username: Optional[str] = None

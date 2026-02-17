@@ -16,7 +16,13 @@ class InterviewService:
     def __init__(self):
         self.client = AsyncOpenAI(api_key=settings.openai_api_key)
         self.model = "gpt-4-turbo-preview" # Or gpt-3.5-turbo if cost concern
-        self.db = Database.db 
+        # self.db = Database.db # REMOVED: Use dynamic property
+
+    @property
+    def db(self):
+        if Database.db is None:
+            print("CRITICAL: Database.db is None in InterviewService!")
+        return Database.db
         
     async def create_session(self, candidate_id: str, platform: str = "web_simulator", chat_id: str = None) -> InterviewSession:
         """Initialize a new interview session."""
@@ -237,7 +243,11 @@ class InterviewService:
                     await self._log_token_usage(response2.usage, session.candidate_id, "chat_tool_response")
 
                 final_content = response2.choices[0].message.content
-                print(f"DEBUG: Final AI content: {final_content[:50]}...")
+                if final_content:
+                    print(f"DEBUG: Final AI content: {final_content[:50]}...")
+                else:
+                    print("DEBUG: Final AI content is None")
+                    
                 if final_content:
                     final_msg = {"role": "assistant", "content": final_content}
                     await self.db.interview_sessions.update_one(
@@ -245,6 +255,9 @@ class InterviewService:
                         {"$push": {"messages": final_msg}, "$set": {"updated_at": datetime.utcnow()}}
                     )
                     return final_content
+                else:
+                    # AI didn't generate content after tool call, return acknowledgment
+                    return "I understand. Please continue..."
 
             # 5. Save AI Response
             print(f"DEBUG: AI Content (No Tools): {ai_message.content[:50]}...")
@@ -259,6 +272,8 @@ class InterviewService:
             return "..." 
 
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             error_msg = f"Error: {str(e)}"
             print(error_msg)
             return error_msg
@@ -487,15 +502,16 @@ class InterviewService:
 
     async def _generate_initial_greeting(self, session: InterviewSession):
         """Generate the first message from the AI."""
-        system_prompt = await self.get_system_prompt(session.pipeline_id)
-        
-        # Construct messages to trigger greeting
-        messages = [{"role": "system", "content": system_prompt}]
-        # We simulate a "system" instruction disguised as user to kickstart it.
-        # The new prompt expects "Ready" to start without tool calls.
-        messages.append({"role": "user", "content": "Ready"})
-        
+        print(f"DEBUG: Generating initial greeting for session {session.id}...")
         try:
+            system_prompt = await self.get_system_prompt(session.pipeline_id)
+            print(f"DEBUG: System prompt retrieved. Length: {len(system_prompt)}")
+            
+            # Construct messages to trigger greeting
+            messages = [{"role": "system", "content": system_prompt}]
+            messages.append({"role": "user", "content": "Ready"})
+            
+            print("DEBUG: Calling OpenAI for greeting...")
             response = await self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
@@ -507,6 +523,7 @@ class InterviewService:
                 await self._log_token_usage(response.usage, session.candidate_id, "greeting")
             
             ai_message = response.choices[0].message
+            print(f"DEBUG: OpenAI Response: {ai_message.content[:50]}...")
             
             if ai_message.content:
                 new_ai_msg = {"role": "assistant", "content": ai_message.content}
@@ -514,8 +531,11 @@ class InterviewService:
                     {"_id": session.id},
                     {"$push": {"messages": new_ai_msg}, "$set": {"updated_at": datetime.utcnow()}}
                 )
+                print("DEBUG: Greeting pushed to DB.")
         except Exception as e:
             print(f"Error generating initial greeting: {e}")
+            import traceback
+            traceback.print_exc()
             # Append error message so it's visible to user
             error_msg = {"role": "assistant", "content": f"I apologize, I'm having trouble starting the interview. Error details: {str(e)}"}
             await self.db.interview_sessions.update_one(
